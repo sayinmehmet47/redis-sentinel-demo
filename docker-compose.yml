@@ -1,0 +1,87 @@
+services:
+  redis-master:
+    image: redis:7
+    command: redis-server --port 6379
+    ports:
+      - '6379:6379'
+    networks:
+      redis-net:
+        ipv4_address: 172.28.0.2
+
+  redis-replica-1:
+    image: redis:7
+    command: redis-server --port 6379 --replicaof 172.28.0.2 6379
+    depends_on:
+      - redis-master
+    networks:
+      redis-net:
+        ipv4_address: 172.28.0.3
+
+  redis-replica-2:
+    image: redis:7
+    command: redis-server --port 6379 --replicaof 172.28.0.2 6379
+    depends_on:
+      - redis-master
+    networks:
+      redis-net:
+        ipv4_address: 172.28.0.4
+
+  sentinel-1:
+    image: redis:7
+    command: >
+      sh -c 'echo "sentinel resolve-hostnames yes" > /tmp/sentinel.conf &&
+             echo "sentinel monitor mymaster 172.28.0.2 6379 2" >> /tmp/sentinel.conf &&
+             echo "sentinel down-after-milliseconds mymaster 5000" >> /tmp/sentinel.conf &&
+             echo "sentinel failover-timeout mymaster 10000" >> /tmp/sentinel.conf &&
+             echo "sentinel parallel-syncs mymaster 1" >> /tmp/sentinel.conf &&
+             redis-sentinel /tmp/sentinel.conf'
+    ports:
+      - '26379:26379'
+    depends_on:
+      - redis-master
+      - redis-replica-1
+      - redis-replica-2
+    networks:
+      redis-net:
+        ipv4_address: 172.28.0.5
+
+  sentinel-2:
+    image: redis:7
+    command: >
+      sh -c 'echo "sentinel resolve-hostnames yes" > /tmp/sentinel.conf &&
+             echo "sentinel monitor mymaster 172.28.0.2 6379 2" >> /tmp/sentinel.conf &&
+             echo "sentinel down-after-milliseconds mymaster 5000" >> /tmp/sentinel.conf &&
+             echo "sentinel failover-timeout mymaster 10000" >> /tmp/sentinel.conf &&
+             echo "sentinel parallel-syncs mymaster 1" >> /tmp/sentinel.conf &&
+             redis-sentinel /tmp/sentinel.conf'
+    ports:
+      - '26380:26379'
+    depends_on:
+      - redis-master
+    networks:
+      redis-net:
+        ipv4_address: 172.28.0.6
+
+  sentinel-3:
+    image: redis:7
+    command: >
+      sh -c 'echo "sentinel resolve-hostnames yes" > /tmp/sentinel.conf &&
+             echo "sentinel monitor mymaster 172.28.0.2 6379 2" >> /tmp/sentinel.conf &&
+             echo "sentinel down-after-milliseconds mymaster 5000" >> /tmp/sentinel.conf &&
+             echo "sentinel failover-timeout mymaster 10000" >> /tmp/sentinel.conf &&
+             echo "sentinel parallel-syncs mymaster 1" >> /tmp/sentinel.conf &&
+             redis-sentinel /tmp/sentinel.conf'
+    ports:
+      - '26381:26379'
+    depends_on:
+      - redis-master
+    networks:
+      redis-net:
+        ipv4_address: 172.28.0.7
+
+networks:
+  redis-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
