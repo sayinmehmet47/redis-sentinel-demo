@@ -79,6 +79,20 @@ services:
       redis-net:
         ipv4_address: 172.28.0.7
 
+  app:
+    build: .
+    command: npm run start:dev
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      - sentinel-1
+      - sentinel-2
+      - sentinel-3
+    networks:
+      - redis-net
+
 networks:
   redis-net:
     driver: bridge

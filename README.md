@@ -120,22 +120,90 @@ gh repo create redis-sentinel-demo --public --source=. --remote=origin --push
 
 ## App Commands
 
-This repo also includes a NestJS app.
+This repo also includes a NestJS app that talks to Redis through Sentinel
+using `ioredis`. The app runs as a container on the same Docker network as
+Redis — see the "Docker + Sentinel gotcha" section below for why.
 
-Install dependencies:
+Start everything (Redis, sentinels, and the app):
+
+```bash
+docker compose up -d --build
+```
+
+Check the app is connected:
+
+```bash
+curl localhost:3000/redis/info
+# -> {"role":"master","connectedSlaves":"2"}
+```
+
+Set and get a key:
+
+```bash
+curl -X POST localhost:3000/redis -H 'Content-Type: application/json' \
+  -d '{"key":"hello","value":"world"}'
+
+curl localhost:3000/redis/hello
+# -> {"key":"hello","value":"world"}
+```
+
+Tail app logs (useful while testing failover):
+
+```bash
+docker compose logs -f app
+```
+
+Run tests locally (on the host, no Docker needed):
 
 ```bash
 npm install
-```
-
-Run in development:
-
-```bash
-npm run start:dev
-```
-
-Run tests:
-
-```bash
 npm test
 ```
+
+## The Docker + Sentinel Gotcha
+
+The first instinct is to run the Nest app on the host with
+`localhost:26379/26380/26381` as the sentinel list. It looks like it should
+work — the sentinel ports are published, and `redis-cli -p 26379 ping` from
+the host responds with `PONG`.
+
+But the app fails with:
+
+```
+[Redis] Error: connect ETIMEDOUT
+[Redis] Error: All sentinels are unreachable.
+```
+
+Here is what actually happens:
+
+1. `ioredis` connects to `localhost:26379` — **this works**.
+2. It asks the sentinel: "where is the master?"
+3. The sentinel replies with the address it has on file: `172.28.0.2:6379`.
+4. `ioredis` tries to connect to `172.28.0.2:6379` from the host — **ETIMEDOUT**,
+   because that IP only exists inside the Docker bridge network.
+5. After retrying every sentinel with the same result, `ioredis` prints the
+   misleading `"All sentinels are unreachable"` error. The sentinels are
+   perfectly reachable; the **master address they hand out** is not.
+
+This is the number-one pitfall with Redis Sentinel behind Docker.
+
+### The fix used in this repo
+
+Run the app on the same Docker network as Redis, so `172.28.0.2` is routable:
+
+- The `app` service in `docker-compose.yml` joins `redis-net`.
+- `src/redis/redis.module.ts` uses the container hostnames
+  (`sentinel-1`, `sentinel-2`, `sentinel-3`) on port `26379` — **not** the
+  host-published ports `26380` / `26381`.
+
+### Other options (for reference)
+
+- Use `sentinel announce-ip` / `replica-announce-ip` to have each node
+  advertise a host-reachable address. This is fiddly because every node
+  needs a unique host-reachable address, and on macOS/Windows you cannot
+  route to the `172.28.0.0/16` subnet at all.
+- Use `network_mode: host` on the Redis containers (Linux only).
+
+For a learning demo, putting the app on the Redis network is by far the
+simplest and also the most realistic — in production your app is almost
+always on the same network as Redis.

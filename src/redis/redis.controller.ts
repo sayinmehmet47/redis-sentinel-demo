@@ -1,6 +1,19 @@
 import { Controller, Get, Post, Body, Param, Delete } from '@nestjs/common';
+import { ApiTags, ApiProperty } from '@nestjs/swagger';
 import { RedisService } from './redis.service';
 
+class SetKeyDto {
+  @ApiProperty({ example: 'hello' })
+  key!: string;
+
+  @ApiProperty({ example: 'world' })
+  value!: string;
+
+  @ApiProperty({ required: false, example: 60, description: 'TTL in seconds' })
+  ttl?: number;
+}
+
+@ApiTags('redis')
 @Controller('redis')
 export class RedisController {
   constructor(private readonly redisService: RedisService) {}
@@ -11,7 +24,7 @@ export class RedisController {
   }
 
   @Post()
-  async set(@Body() body: { key: string; value: string; ttl?: number }) {
+  async set(@Body() body: SetKeyDto) {
     await this.redisService.set(body.key, body.value, body.ttl);
     return { ok: true };
   }
